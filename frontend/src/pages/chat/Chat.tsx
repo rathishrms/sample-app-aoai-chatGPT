@@ -94,13 +94,14 @@ const Chat = () => {
     }, [appStateContext?.state.chatHistoryLoadingState])
 
     const getUserInfoList = async () => {
-        const userInfoList = await getUserInfo();
-        if (userInfoList.length === 0 && window.location.hostname !== "127.0.0.1") {
-            setShowAuthMessage(true);
-        }
-        else {
-            setShowAuthMessage(false);
-        }
+    //     const userInfoList = await getUserInfo();
+    //     if (userInfoList.length === 0 && window.location.hostname !== "127.0.0.1") {
+    //         setShowAuthMessage(true);
+    //     }
+    //     else {
+    //         setShowAuthMessage(false);
+    //     }
+    setShowAuthMessage(false);
     }
 
     let assistantMessage = {} as ChatMessage
@@ -586,7 +587,7 @@ const Chat = () => {
                                     className={styles.chatIcon}
                                     aria-hidden="true"
                                 />
-                                <h1 className={styles.chatEmptyStateTitle}>Start chatting</h1>
+                                <h1 className={styles.chatEmptyStateTitle}>Welcome to AOI Insights Bot!!</h1>
                                 <h2 className={styles.chatEmptyStateSubtitle}>This chatbot is configured to answer your telco related analytics questions</h2>
                             </Stack>
                         ) : (
