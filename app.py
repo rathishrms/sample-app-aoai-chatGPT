@@ -4,9 +4,16 @@ import logging
 import requests
 import openai
 import copy
+import utils
+import pandas as pd
+import openai
+import requests
 from azure.identity import DefaultAzureCredential
 from flask import Flask, Response, request, jsonify, send_from_directory
 from dotenv import load_dotenv
+# from azure.kusto.data import KustoClient, KustoConnectionStringBuilder
+# from azure.kusto.data.exceptions import KustoServiceError
+# from azure.kusto.data.helpers import dataframe_from_result_table
 
 from backend.auth.auth_utils import get_authenticated_user_details
 from backend.history.cosmosdbservice import CosmosConversationClient
