@@ -5,15 +5,17 @@ import requests
 import openai
 import copy
 import utils
+import uuid
+import time
+import re
 import pandas as pd
-import openai
 import requests
 from azure.identity import DefaultAzureCredential
 from flask import Flask, Response, request, jsonify, send_from_directory
 from dotenv import load_dotenv
-# from azure.kusto.data import KustoClient, KustoConnectionStringBuilder
-# from azure.kusto.data.exceptions import KustoServiceError
-# from azure.kusto.data.helpers import dataframe_from_result_table
+from azure.kusto.data import KustoClient, KustoConnectionStringBuilder
+from azure.kusto.data.exceptions import KustoServiceError
+from azure.kusto.data.helpers import dataframe_from_result_table
 
 from backend.auth.auth_utils import get_authenticated_user_details
 from backend.history.cosmosdbservice import CosmosConversationClient
@@ -80,6 +82,17 @@ AZURE_OPENAI_MODEL_NAME = os.environ.get("AZURE_OPENAI_MODEL_NAME", "gpt-35-turb
 AZURE_OPENAI_EMBEDDING_ENDPOINT = os.environ.get("AZURE_OPENAI_EMBEDDING_ENDPOINT")
 AZURE_OPENAI_EMBEDDING_KEY = os.environ.get("AZURE_OPENAI_EMBEDDING_KEY")
 AZURE_OPENAI_EMBEDDING_NAME = os.environ.get("AZURE_OPENAI_EMBEDDING_NAME", "")
+OPENAI_DEPLOYMENT_NAME = os.environ.get("OPENAI_DEPLOYMENT_NAME")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") 
+OPENAI_DEPLOYMENT_ENDPOINT = os.environ.get("OPENAI_DEPLOYMENT_ENDPOINT")
+OPENAI_MODEL_NAME = os.environ.get("OPENAI_MODEL_NAME")
+OPENAI_DEPLOYMENT_VERSION = os.environ.get("OPENAI_DEPLOYMENT_VERSION")
+AAD_TENANT_ID = os.environ.get("AAD_TENANT_ID")
+KUSTO_CLUSTER = os.environ.get("KUSTO_CLUSTER")
+KUSTO_DATABASE = os.environ.get("KUSTO_DATABASE")
+KUSTO_TABLE = os.environ.get("KUSTO_TABLE")
+KUSTO_MANAGED_IDENTITY_APP_ID = os.environ.get("KUSTO_MANAGED_IDENTITY_APP_ID")
+KUSTO_MANAGED_IDENTITY_SECRET = os.environ.get("KUSTO_MANAGED_IDENTITY_SECRET")
 
 # CosmosDB Mongo vcore vector db Settings
 AZURE_COSMOSDB_MONGO_VCORE_CONNECTION_STRING = os.environ.get("AZURE_COSMOSDB_MONGO_VCORE_CONNECTION_STRING")  #This has to be secure string
@@ -95,6 +108,7 @@ AZURE_COSMOSDB_MONGO_VCORE_TITLE_COLUMN = os.environ.get("AZURE_COSMOSDB_MONGO_V
 AZURE_COSMOSDB_MONGO_VCORE_URL_COLUMN = os.environ.get("AZURE_COSMOSDB_MONGO_VCORE_URL_COLUMN")
 AZURE_COSMOSDB_MONGO_VCORE_VECTOR_COLUMNS = os.environ.get("AZURE_COSMOSDB_MONGO_VCORE_VECTOR_COLUMNS")
 
+print(AZURE_OPENAI_KEY)
 
 SHOULD_STREAM = True if AZURE_OPENAI_STREAM.lower() == "true" else False
 
@@ -103,6 +117,91 @@ AZURE_COSMOSDB_DATABASE = os.environ.get("AZURE_COSMOSDB_DATABASE")
 AZURE_COSMOSDB_ACCOUNT = os.environ.get("AZURE_COSMOSDB_ACCOUNT")
 AZURE_COSMOSDB_CONVERSATIONS_CONTAINER = os.environ.get("AZURE_COSMOSDB_CONVERSATIONS_CONTAINER")
 AZURE_COSMOSDB_ACCOUNT_KEY = os.environ.get("AZURE_COSMOSDB_ACCOUNT_KEY")
+
+# Connect to adx using AAD app registration
+cluster = KUSTO_CLUSTER
+kcsb = KustoConnectionStringBuilder.with_aad_application_key_authentication(cluster, KUSTO_MANAGED_IDENTITY_APP_ID, KUSTO_MANAGED_IDENTITY_SECRET,  AAD_TENANT_ID)
+client = KustoClient(kcsb)
+
+template_prefix = """
+<|im_start|>system
+I have an Azure Data Explorer (Kusto) table containing the following columns: 
+eventTimeFlow,flowRecord_flowRecordType,flowRecord_subscriberInfo_imsi,flowRecord_keys_sessionId,flowRecord_dpiStringInfo_application,flowRecord_dpiStringInfo_layer7Protocol,flowRecord_gatewayInfo_gwNodeID,flowRecord_dpiStringInfo_operatingSystem,flowRecord_creationtime_timesecs,flowRecord_creationtime_timeusecs,flowRecord_networkStatsInfo_downlinkFlowPeakThroughput,flowRecord_networkStatsInfo_uplinkFlowPeakThroughput,flowRecord_networkStatsInfo_downlinkFlowActivityDuration,flowRecord_networkStatsInfo_uplinkFlowActivityDuration,flowRecord_networkStatsInfo_downlinkInitialRTT_timesecs,flowRecord_networkStatsInfo_downlinkInitialRTT_timeusecs,flowRecord_networkStatsInfo_uplinkInitialRTT_timesecs,flowRecord_networkStatsInfo_uplinkInitialRTT_timeusecs,flowRecord_networkStatsInfo_closureReason,flowRecord_networkPerfInfo_initialRTT_timesecs,flowRecord_networkPerfInfo_initialRTT_timeusecs,flowRecord_networkPerfInfo_HttpTtfbTime_timesecs,flowRecord_networkPerfInfo_HttpTtfbTime_timeusecs,flowRecord_dataStats_upLinkOctets,flowRecord_dataStats_downLinkOctets,flowRecord_dataStats_downLinkPackets,flowRecord_dataStats_downLinkDropPackets,flowRecord_dataStats_upLinkPackets,flowRecord_dataStats_upLinkDropPackets,flowRecord_tcpRetransInfo_downlinkRetransBytes,flowRecord_tcpRetransInfo_uplinkRetransBytes,flowRecord_tcpRetransInfo_downlinkRetransPackets,flowRecord_tcpRetransInfo_uplinkRetransPackets,flowRecord_ipTuple_networkIpAddress,flowRecord_ipTuple_networkPort,flowRecord_ipTuple_protocol,flowRecord_keys_flowId,eventTimeSession,sessionRecord_subscriberInfo_userLocationInfo_ecgi_eci,sessionRecord_keys_sessionId,sessionRecord_subscriberInfo_imsi,sessionRecord_subscriberInfo_msisdn,sessionRecord_subscriberInfo_imeisv_tac,sessionRecord_servingNetworkInfo_apnId,sessionRecord_servingNetworkInfo_nodeAddress,sessionRecord_servingNetworkInfo_nodePlmnId_mcc,sessionRecord_servingNetworkInfo_nodePlmnId_mnc,eventTimeHTTP,httpRecord_keys_flowId,httpRecord_keys_sessionId,httpRecord_httpTransactionRecord_subscriberInformation_gwNodeID,httpRecord_httpTransactionRecord_subscriberInformation_imsi,httpRecord_keys_transactionId,httpRecord_httpTransactionRecord_dpiInformation_application,httpRecord_httpTransactionRecord_subscriberInformation_realApn,httpRecord_httpTransactionRecord_requestInformation_failureReason,httpRecord_httpTransactionRecord_responseInformation_responseStatus,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_maxDownstreamMSS,httpRecord_httpTransactionRecord_tcpServerConnectionInformation_MSS,httpRecord_httpTransactionRecord_tcpServerConnectionInformation_rtt,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelNoneTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelMildTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelModerateTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelSevereTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_minRTT,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_maxRTT,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_avgRTT,httpRecord_httpTransactionRecord_tcpSplicingInformation_tlsSNI,httpRecord_httpTransactionRecord_udpProxyInformation_quicSni,httpRecord_httpTransactionRecord_requestInformation_serverUrl_Host,Column71
+
+
+Write an KQL query based on the user input below. Answer in a concise manner. Answer only with the KQL query where the table name is T, no extra text.
+
+user input: 
+"""
+template_sufix = "<|im_end|>\n<|im_start|>assistant"
+
+# Define functions to call the OpenAI API and run KQL query
+def call_openai_new(messages):
+    response = openai.ChatCompletion.create(
+        engine=utils.OPENAI_DEPLOYMENT_NAME,
+        messages = messages,
+        temperature=float(AZURE_OPENAI_TEMPERATURE),
+        max_tokens=int(AZURE_OPENAI_MAX_TOKENS),
+        top_p=float(AZURE_OPENAI_TOP_P),
+        stop=AZURE_OPENAI_STOP_SEQUENCE.split("|") if AZURE_OPENAI_STOP_SEQUENCE else None,
+        stream=SHOULD_STREAM
+    )
+    return response
+
+def call_openai_kql_response_new(messages):
+    response = call_openai_new(messages)
+
+    # print("Raw response:", response)
+    # query = response.replace("T", "['enriched-edr']")
+    # # query = response.replace("T", "monitor")
+    # query = query.replace("```", "")
+    # # print("Generated KQL query:", query)
+    # response = client.execute("aoienriched", query)
+
+    df = dataframe_from_result_table(response.primary_results[0])
+    return df
+
+def call_openai(template_prefix, text):
+    prompt = template_prefix + text + template_sufix
+    response = openai.Completion.create(
+        model=utils.OPENAI_DEPLOYMENT_NAME,
+        engine=utils.OPENAI_DEPLOYMENT_NAME,
+        prompt=prompt,
+        temperature=0,
+        max_tokens=4096,
+        top_p=0.95,
+        frequency_penalty=0,
+        presence_penalty=0,
+        stop=["<|im_end|>"])
+    # print(response)
+    # response = response['choices'][0]['text']
+    response = response.choices[0].text.strip()
+    response = utils.remove_chars("\n", response)
+    response=utils.start_after_string("Answer:", response)
+    response=utils.remove_tail_tags("<|im_end|>", response)
+    return response
+
+def call_openai_kql_response(text):
+    response = call_openai(template_prefix, text)
+
+    # print("Raw response:", response)
+    query = response.replace("T", "['enriched-edr']")
+    # query = response.replace("T", "monitor")
+    query = query.replace("```", "")
+    # print("Generated KQL query:", query)
+    response = client.execute("aoienriched", query)
+
+    df = dataframe_from_result_table(response.primary_results[0])
+    return df
+
+# df = call_openai_kql_response("calculate the total uplink and downlink octets for each application in the 'enriched-edr' table.")
+# print(df)
+
+# df = call_openai_kql_response("the distribution of sessions across different applications:")
+# print(df)
+
+df = call_openai_kql_response("Total uplink and downlink octets by application")
+print(df)
 
 # Initialize a CosmosDB client with AAD auth and containers for Chat History
 cosmos_conversation_client = None
@@ -431,6 +530,7 @@ def formatApiResponseStreaming(rawResponse):
     return response
 
 def conversation_with_data(request_body):
+    print("conversation_with_data")
     body, headers = prepare_body_headers_with_data(request)
     base_url = AZURE_OPENAI_ENDPOINT if AZURE_OPENAI_ENDPOINT else f"https://{AZURE_OPENAI_RESOURCE}.openai.azure.com/"
     endpoint = f"{base_url}openai/deployments/{AZURE_OPENAI_MODEL}/extensions/chat/completions?api-version={AZURE_OPENAI_PREVIEW_API_VERSION}"
@@ -452,12 +552,14 @@ def conversation_with_data(request_body):
         return Response(stream_with_data(body, headers, endpoint, history_metadata), mimetype='text/event-stream')
 
 def stream_without_data(response, history_metadata={}):
+    #print("stream_without_data")
     responseText = ""
     for line in response:
         if line["choices"]:
             deltaText = line["choices"][0]["delta"].get('content')
         else:
             deltaText = ""
+        #print(deltaText)
         if deltaText and deltaText != "[DONE]":
             responseText = deltaText
 
@@ -474,10 +576,122 @@ def stream_without_data(response, history_metadata={}):
             }],
             "history_metadata": history_metadata
         }
+        #print(response_obj)
+        #print('--------')
         yield format_as_ndjson(response_obj)
 
+def our_stream_without_data(full_response, history_metadata={}):
+    print("our_stream_without_data: sending response text")
+    print(full_response)
+
+    # words = []
+
+    # for c in full_response:
+    #     words.append(c)
+
+    # Split the text into words
+    words = re.findall(r'\S+|\n|\W', full_response)
+
+    print(words)
+
+    session_uuid = uuid.uuid4()
+    session_created_time = int(time.time())
+
+    # Iterate through the words
+    start_message = ["#START#", "#START-SECOND#"]
+    words = start_message + words
+
+    print(words)
+    for word in words:
+        response_obj = {}
+
+        if word == "#START#":
+            response_obj = {
+                "id": "",
+                "model": "",
+                "created": 0,
+                "object": "",
+                "choices": [{
+                    "messages": [{
+                        "role": "assistant",
+                        "content": ""
+                    }]
+                }],
+                "history_metadata": {}
+            }
+        elif word == "#START-SECOND#":
+            response_obj = {
+                "id": "chatcmpl-" + str(session_uuid),
+                "model": "gpt-35-turbo",
+                "created": session_created_time,
+                "object": "chat.completion.chunk",
+                "choices": [{
+                    "messages": [{
+                        "role": "assistant",
+                        "content": ""
+                    }]
+                }],
+                "history_metadata": {}
+            }
+        elif word == '':
+            response_obj = {
+                "id": "chatcmpl-" + str(session_uuid),
+                "model": "gpt-35-turbo",
+                "created": session_created_time,
+                "object": "chat.completion.chunk",
+                "choices": [{
+                    "messages": [{
+                        "role": "assistant",
+                        "content": ' '
+                    }]
+                }],
+                "history_metadata": history_metadata
+            }
+        else:
+            response_obj = {
+                "id": "chatcmpl-" + str(session_uuid),
+                "model": "gpt-35-turbo",
+                "created": session_created_time,
+                "object": "chat.completion.chunk",
+                "choices": [{
+                    "messages": [{
+                        "role": "assistant",
+                        "content": word
+                    }]
+                }],
+                "history_metadata": history_metadata
+            }
+
+        yield format_as_ndjson(response_obj)
+
+    # for line in response:
+    #     print(line)
+    #     if line["choices"]:
+    #         deltaText = line["choices"][0]["delta"].get('content')
+    #     else:
+    #         deltaText = ""
+    #     if deltaText and deltaText != "[DONE]":
+    #         responseText = deltaText
+
+    #     response_obj = {
+    #         "id": line["id"],
+    #         "model": line["model"],
+    #         "created": line["created"],
+    #         "object": line["object"],
+    #         "choices": [{
+    #             "messages": [{
+    #                 "role": "assistant",
+    #                 "content": responseText
+    #             }]
+    #         }],
+    #         "history_metadata": history_metadata
+    #     }
+    #     yield format_as_ndjson(response_obj)
 
 def conversation_without_data(request_body):
+    print("conversation_without_data")
+    print(request_body)
+
     openai.api_type = "azure"
     openai.api_base = AZURE_OPENAI_ENDPOINT if AZURE_OPENAI_ENDPOINT else f"https://{AZURE_OPENAI_RESOURCE}.openai.azure.com/"
     openai.api_version = "2023-08-01-preview"
@@ -487,7 +701,8 @@ def conversation_without_data(request_body):
     messages = [
         {
             "role": "system",
-            "content": AZURE_OPENAI_SYSTEM_MESSAGE
+            # "content": AZURE_OPENAI_SYSTEM_MESSAGE
+            "content": "Behave like a Kusto Query language expert. I have a dataset wherein i have a table named \"enriched-edr\". It has the below comma separated columns: eventTimeFlow,flowRecord_flowRecordType,flowRecord_subscriberInfo_imsi,flowRecord_keys_sessionId,flowRecord_dpiStringInfo_application,flowRecord_dpiStringInfo_layer7Protocol,flowRecord_gatewayInfo_gwNodeID,flowRecord_dpiStringInfo_operatingSystem,flowRecord_creationtime_timesecs,flowRecord_creationtime_timeusecs,flowRecord_networkStatsInfo_downlinkFlowPeakThroughput,flowRecord_networkStatsInfo_uplinkFlowPeakThroughput,flowRecord_networkStatsInfo_downlinkFlowActivityDuration,flowRecord_networkStatsInfo_uplinkFlowActivityDuration,flowRecord_networkStatsInfo_downlinkInitialRTT_timesecs,flowRecord_networkStatsInfo_downlinkInitialRTT_timeusecs,flowRecord_networkStatsInfo_uplinkInitialRTT_timesecs,flowRecord_networkStatsInfo_uplinkInitialRTT_timeusecs,flowRecord_networkStatsInfo_closureReason,flowRecord_networkPerfInfo_initialRTT_timesecs,flowRecord_networkPerfInfo_initialRTT_timeusecs,flowRecord_networkPerfInfo_HttpTtfbTime_timesecs,flowRecord_networkPerfInfo_HttpTtfbTime_timeusecs,flowRecord_dataStats_upLinkOctets,flowRecord_dataStats_downLinkOctets,flowRecord_dataStats_downLinkPackets,flowRecord_dataStats_downLinkDropPackets,flowRecord_dataStats_upLinkPackets,flowRecord_dataStats_upLinkDropPackets,flowRecord_tcpRetransInfo_downlinkRetransBytes,flowRecord_tcpRetransInfo_uplinkRetransBytes,flowRecord_tcpRetransInfo_downlinkRetransPackets,flowRecord_tcpRetransInfo_uplinkRetransPackets,flowRecord_ipTuple_networkIpAddress,flowRecord_ipTuple_networkPort,flowRecord_ipTuple_protocol,flowRecord_keys_flowId,eventTimeSession,sessionRecord_subscriberInfo_userLocationInfo_ecgi_eci,sessionRecord_keys_sessionId,sessionRecord_subscriberInfo_imsi,sessionRecord_subscriberInfo_msisdn,sessionRecord_subscriberInfo_imeisv_tac,sessionRecord_servingNetworkInfo_apnId,sessionRecord_servingNetworkInfo_nodeAddress,sessionRecord_servingNetworkInfo_nodePlmnId_mcc,sessionRecord_servingNetworkInfo_nodePlmnId_mnc,eventTimeHTTP,httpRecord_keys_flowId,httpRecord_keys_sessionId,httpRecord_httpTransactionRecord_subscriberInformation_gwNodeID,httpRecord_httpTransactionRecord_subscriberInformation_imsi,httpRecord_keys_transactionId,httpRecord_httpTransactionRecord_dpiInformation_application,httpRecord_httpTransactionRecord_subscriberInformation_realApn,httpRecord_httpTransactionRecord_requestInformation_failureReason,httpRecord_httpTransactionRecord_responseInformation_responseStatus,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_maxDownstreamMSS,httpRecord_httpTransactionRecord_tcpServerConnectionInformation_MSS,httpRecord_httpTransactionRecord_tcpServerConnectionInformation_rtt,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelNoneTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelMildTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelModerateTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelSevereTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_minRTT,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_maxRTT,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_avgRTT,httpRecord_httpTransactionRecord_tcpSplicingInformation_tlsSNI,httpRecord_httpTransactionRecord_udpProxyInformation_quicSni,httpRecord_httpTransactionRecord_requestInformation_serverUrl_Host,Column71\nInstructions: In your response, write an KQL query based on the user input message. Answer in a concise manner. Answer only with the KQL query where the table name is T. Do not add any extra text in your response. Do not preface your response with anything."
         }
     ]
 
@@ -497,9 +712,20 @@ def conversation_without_data(request_body):
                 "role": message["role"] ,
                 "content": message["content"]
             })
+    
+    # latest_message = request_body['messages'][-1]['content']
+    # print(latest_message)
+    # df = call_openai_kql_response(latest_message)
+    # print(df)
+    # df_as_text = df.to_string()
+    # print("--------")
+    # print(df_as_text)
+
+    print("Messages:")
+    print(messages)
 
     response = openai.ChatCompletion.create(
-        engine=AZURE_OPENAI_MODEL,
+        engine=utils.OPENAI_DEPLOYMENT_NAME,
         messages = messages,
         temperature=float(AZURE_OPENAI_TEMPERATURE),
         max_tokens=int(AZURE_OPENAI_MAX_TOKENS),
@@ -511,6 +737,7 @@ def conversation_without_data(request_body):
     history_metadata = request_body.get("history_metadata", {})
 
     if not SHOULD_STREAM:
+        print("mohit 1")
         response_obj = {
             "id": response,
             "model": response.model,
@@ -527,8 +754,54 @@ def conversation_without_data(request_body):
 
         return jsonify(response_obj), 200
     else:
-        return Response(stream_without_data(response, history_metadata), mimetype='text/event-stream')
+        print("Response Object:", response)
 
+        # Extract KQL Query from response
+        words = []
+        for chunk in response:
+            print(chunk)
+            token = None
+            if chunk["choices"]:
+                token = chunk["choices"][0]["delta"].get('content')
+            else:
+                token = ""
+            
+            if token and token != "[DONE]":
+                print("'" + token + "'")
+                words.append(token)
+
+        kql_query = ''.join(words)
+
+        print("KQL Query:")
+        print(kql_query)
+
+        # Execute KQL Query
+        kql_query = kql_query.replace("T\n| ", "['enriched-edr'] | ")
+
+        print("KQL Query with Table Name: " + kql_query)
+
+        if kql_query.startswith("['enriched-edr']") or kql_query.startswith("```['enriched-edr']") or kql_query.startswith("````\n['enriched-edr']"):
+            kql_response = client.execute("aoienriched", kql_query)
+
+            print("KQL Response:")
+            print(kql_response)
+
+            # Convert KQL Response to a Pandas DataFrame
+            df = dataframe_from_result_table(kql_response.primary_results[0])
+
+            # Convert DataFrame as text
+            df_as_text = df.to_string()
+
+            print("Dataframe as text:")
+            print(df_as_text)
+
+            response_to_stream_back = df_as_text
+        else:
+            # Stream the original OpenAI response back as a stream
+            response_to_stream_back = kql_query
+
+        # Stream the text back to Frontend
+        return Response(our_stream_without_data(response_to_stream_back, history_metadata), mimetype='text/event-stream')
 
 @app.route("/conversation", methods=["GET", "POST"])
 def conversation():
@@ -797,7 +1070,7 @@ def generate_title(conversation_messages):
         openai.api_version = "2023-03-15-preview"
         openai.api_key = AZURE_OPENAI_KEY
         completion = openai.ChatCompletion.create(    
-            engine=AZURE_OPENAI_MODEL,
+            engine=utils.OPENAI_DEPLOYMENT_NAME,
             messages=messages,
             temperature=1,
             max_tokens=64 
