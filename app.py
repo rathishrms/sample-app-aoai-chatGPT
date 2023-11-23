@@ -9,6 +9,9 @@ import uuid
 import time
 import re
 import pandas as pd
+import plotly as plt
+import plotly.express as px
+import plotly.io as pio
 import requests
 from azure.identity import DefaultAzureCredential
 from flask import Flask, Response, request, jsonify, send_from_directory
@@ -826,9 +829,32 @@ def conversation_without_data(request_body):
                     print("Dataframe as text:")
                     print(df_as_text)
 
-                    response_to_stream_back = "Query: " + kql_query + "\n\n" + df_as_text
+                    # Assuming this is plottable data, use plotly to render the image
+                    #![Alt text](https://picsum.photos/536/354)
+
+                    # # Example DataFrame
+                    # data = {'Category': df.columns, 'Values': df.iloc[:]}
+
+                    # df = pd.DataFrame(data)
+
+                    # # Create a bar graph using Plotly Express
+                    # fig = px.bar(df, x='Category', y='Values', title='Bar Graph of DataFrame')
+
+                    # # Save the plot as an image
+                    # image_path = 'mohit.png'
+                    # fig.write_image(image_path)
+
+                    # fig = df.plot().figure
+                    # fig.show()
+                    # print(fig)
+                    # pio.write_image(fig, "./mohit.png")
+                    
+                    # Save as a file in local system
+                    # Send URL back to frontend along with the original response text
+
+                    response_to_stream_back = f"Query:\n\n{kql_query}\n\nQuery Output:\n\n{df_as_text}\n\nImage:\n\nTODO_THIS_PART"
                 except Exception as e:
-                    response_to_stream_back = f"Query: {kql_query}\n\nError while executing this query.\n\nError: {e}"
+                    response_to_stream_back = f"Query:\n\n{kql_query}\n\nQuery Output:\n\n{df_as_text}\n\nError while executing this query.\n\nError: {e}"
         else:
             print ("Regular Sentence: ")
             # Stream the original OpenAI response back as a stream
