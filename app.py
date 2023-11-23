@@ -688,6 +688,20 @@ def our_stream_without_data(full_response, history_metadata={}):
     #     }
     #     yield format_as_ndjson(response_obj)
 
+
+def extract_content(input_string):
+    start_substring = "KQL_START"
+    end_substring = "KQL_END"
+
+    start_index = input_string.find(start_substring)
+    end_index = input_string.find(end_substring)
+
+    if start_index != -1 and end_index != -1 and start_index < end_index:
+        result = input_string[start_index + len(start_substring):end_index].strip()
+        return result
+    else:
+        return None
+
 def conversation_without_data(request_body):
     print("conversation_without_data")
     print(request_body)
@@ -698,20 +712,27 @@ def conversation_without_data(request_body):
     openai.api_key = AZURE_OPENAI_KEY
 
     request_messages = request_body["messages"]
-    messages = [
-        {
-            "role": "system",
-            # "content": AZURE_OPENAI_SYSTEM_MESSAGE
-            "content": "Behave like a Kusto Query language expert. I have a dataset wherein i have a table named \"enriched-edr\". It has the below comma separated columns: eventTimeFlow,flowRecord_flowRecordType,flowRecord_subscriberInfo_imsi,flowRecord_keys_sessionId,flowRecord_dpiStringInfo_application,flowRecord_dpiStringInfo_layer7Protocol,flowRecord_gatewayInfo_gwNodeID,flowRecord_dpiStringInfo_operatingSystem,flowRecord_creationtime_timesecs,flowRecord_creationtime_timeusecs,flowRecord_networkStatsInfo_downlinkFlowPeakThroughput,flowRecord_networkStatsInfo_uplinkFlowPeakThroughput,flowRecord_networkStatsInfo_downlinkFlowActivityDuration,flowRecord_networkStatsInfo_uplinkFlowActivityDuration,flowRecord_networkStatsInfo_downlinkInitialRTT_timesecs,flowRecord_networkStatsInfo_downlinkInitialRTT_timeusecs,flowRecord_networkStatsInfo_uplinkInitialRTT_timesecs,flowRecord_networkStatsInfo_uplinkInitialRTT_timeusecs,flowRecord_networkStatsInfo_closureReason,flowRecord_networkPerfInfo_initialRTT_timesecs,flowRecord_networkPerfInfo_initialRTT_timeusecs,flowRecord_networkPerfInfo_HttpTtfbTime_timesecs,flowRecord_networkPerfInfo_HttpTtfbTime_timeusecs,flowRecord_dataStats_upLinkOctets,flowRecord_dataStats_downLinkOctets,flowRecord_dataStats_downLinkPackets,flowRecord_dataStats_downLinkDropPackets,flowRecord_dataStats_upLinkPackets,flowRecord_dataStats_upLinkDropPackets,flowRecord_tcpRetransInfo_downlinkRetransBytes,flowRecord_tcpRetransInfo_uplinkRetransBytes,flowRecord_tcpRetransInfo_downlinkRetransPackets,flowRecord_tcpRetransInfo_uplinkRetransPackets,flowRecord_ipTuple_networkIpAddress,flowRecord_ipTuple_networkPort,flowRecord_ipTuple_protocol,flowRecord_keys_flowId,eventTimeSession,sessionRecord_subscriberInfo_userLocationInfo_ecgi_eci,sessionRecord_keys_sessionId,sessionRecord_subscriberInfo_imsi,sessionRecord_subscriberInfo_msisdn,sessionRecord_subscriberInfo_imeisv_tac,sessionRecord_servingNetworkInfo_apnId,sessionRecord_servingNetworkInfo_nodeAddress,sessionRecord_servingNetworkInfo_nodePlmnId_mcc,sessionRecord_servingNetworkInfo_nodePlmnId_mnc,eventTimeHTTP,httpRecord_keys_flowId,httpRecord_keys_sessionId,httpRecord_httpTransactionRecord_subscriberInformation_gwNodeID,httpRecord_httpTransactionRecord_subscriberInformation_imsi,httpRecord_keys_transactionId,httpRecord_httpTransactionRecord_dpiInformation_application,httpRecord_httpTransactionRecord_subscriberInformation_realApn,httpRecord_httpTransactionRecord_requestInformation_failureReason,httpRecord_httpTransactionRecord_responseInformation_responseStatus,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_maxDownstreamMSS,httpRecord_httpTransactionRecord_tcpServerConnectionInformation_MSS,httpRecord_httpTransactionRecord_tcpServerConnectionInformation_rtt,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelNoneTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelMildTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelModerateTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelSevereTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_minRTT,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_maxRTT,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_avgRTT,httpRecord_httpTransactionRecord_tcpSplicingInformation_tlsSNI,httpRecord_httpTransactionRecord_udpProxyInformation_quicSni,httpRecord_httpTransactionRecord_requestInformation_serverUrl_Host,Column71\nInstructions: In your response, write an KQL query based on the user input message. Answer in a concise manner. Answer only with the KQL query where the table name is T. Do not add any extra text in your response. Do not preface your response with anything."
-        }
+    print(request_messages)
+    messages = [{
+        "role": "system",
+        "content": "Behaviour: Behave like an Azure Data Explorer Kusto Query Language expert. Your task is to provide KQL statements to the various question being asked for the below tables.\nContextual Data: I have a dataset wherein i have a table named 'enriched-edr'. It has the below comma separated columns and the corresponding datatype for each column in the format column_name:datatype. Schema for the various tables is as below:\nTable #1: 'enriched-edr'\n\nColumns:\n\neventTimeFlow:datetime,flowRecord_flowRecordType:string,flowRecord_subscriberInfo_imsi:string,flowRecord_keys_sessionId:real,flowRecord_dpiStringInfo_application:string,flowRecord_dpiStringInfo_layer7Protocol:string,flowRecord_gatewayInfo_gwNodeID:string,flowRecord_dpiStringInfo_operatingSystem:string,flowRecord_creationtime_timesecs:string,flowRecord_creationtime_timeusecs:string,flowRecord_networkStatsInfo_downlinkFlowPeakThroughput:long,flowRecord_networkStatsInfo_uplinkFlowPeakThroughput:long,flowRecord_networkStatsInfo_downlinkFlowActivityDuration:string,flowRecord_networkStatsInfo_uplinkFlowActivityDuration:string,flowRecord_networkStatsInfo_downlinkInitialRTT_timesecs:long,flowRecord_networkStatsInfo_downlinkInitialRTT_timeusecs:long,flowRecord_networkStatsInfo_uplinkInitialRTT_timesecs:long,flowRecord_networkStatsInfo_uplinkInitialRTT_timeusecs:long,flowRecord_networkStatsInfo_closureReason:string,flowRecord_networkPerfInfo_initialRTT_timesecs:long,flowRecord_networkPerfInfo_initialRTT_timeusecs:long,flowRecord_networkPerfInfo_HttpTtfbTime_timesecs:long,flowRecord_networkPerfInfo_HttpTtfbTime_timeusecs:long,flowRecord_dataStats_upLinkOctets:long,flowRecord_dataStats_downLinkOctets:long,flowRecord_dataStats_downLinkPackets:long,flowRecord_dataStats_downLinkDropPackets:long,flowRecord_dataStats_upLinkPackets:long,flowRecord_dataStats_upLinkDropPackets:long,flowRecord_tcpRetransInfo_downlinkRetransBytes:long,flowRecord_tcpRetransInfo_uplinkRetransBytes:long,flowRecord_tcpRetransInfo_downlinkRetransPackets:string,flowRecord_tcpRetransInfo_uplinkRetransPackets:string,flowRecord_ipTuple_networkIpAddress:string,flowRecord_ipTuple_networkPort:long,flowRecord_ipTuple_protocol:string,flowRecord_keys_flowId:real,eventTimeSession:datetime,sessionRecord_subscriberInfo_userLocationInfo_ecgi_eci:long,sessionRecord_keys_sessionId:real,sessionRecord_subscriberInfo_imsi:real,sessionRecord_subscriberInfo_msisdn:string,sessionRecord_subscriberInfo_imeisv_tac:longsessionRecord_servingNetworkInfo_apnId:string,sessionRecord_servingNetworkInfo_nodeAddress:string,sessionRecord_servingNetworkInfo_nodePlmnId_mcc:longsessionRecord_servingNetworkInfo_nodePlmnId_mnc:long,eventTimeHTTP:string,httpRecord_keys_flowId:real,httpRecord_keys_sessionId:real,httpRecord_httpTransactionRecord_subscriberInformation_gwNodeID:string,httpRecord_httpTransactionRecord_subscriberInformation_imsi:real,httpRecord_keys_transactionId:long,httpRecord_httpTransactionRecord_dpiInformation_application:string,httpRecord_httpTransactionRecord_subscriberInformation_realApn:string,httpRecord_httpTransactionRecord_requestInformation_failureReason:string,httpRecord_httpTransactionRecord_responseInformation_responseStatus:long,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_maxDownstreamMSS:long,httpRecord_httpTransactionRecord_tcpServerConnectionInformation_MSS:long,httpRecord_httpTransactionRecord_tcpServerConnectionInformation_rtt:long,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelNoneTime:long,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelMildTime:long,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelModerateTime:long,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelSevereTime:long,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_minRTT:long,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_maxRTT:string,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_avgRTT:string,httpRecord_httpTransactionRecord_tcpSplicingInformation_tlsSNI:string,httpRecord_httpTransactionRecord_udpProxyInformation_quicSni:string,httpRecord_httpTransactionRecord_requestInformation_serverUrl_Host:string,Column71:string\nInstructions: In your response, write an KQL query based on the user input message.\n1. Answer in a concise manner.\n2. Answer only with the KQL query statement\n3. Do not add any extra text in your response.\n4. Do not preface your response with anything.\n5. In the section which has KQL statement, prefix the KQL statement with \"KQL_START\" and suffix the section with \"KQL_END\"\n6. Don't use the prefix and suffix in case the response is expressive and does not contain only KQL statement and also has regular english sentences"}
     ]
 
-    for message in request_messages:
-        if message:
-            messages.append({
-                "role": message["role"] ,
-                "content": message["content"]
-            })
+    last_message = request_messages[-1]
+    if last_message:
+        messages.append({
+            "role": last_message["role"] ,
+            "content": last_message["content"]
+        })
+    print("Last Message:")
+    print(last_message)
+
+    # for message in request_messages:
+    #     if message:
+    #         messages.append({
+    #             "role": message["role"] ,
+    #             "content": message["content"]
+    #         })
     
     # latest_message = request_body['messages'][-1]['content']
     # print(latest_message)
@@ -754,51 +775,64 @@ def conversation_without_data(request_body):
 
         return jsonify(response_obj), 200
     else:
-        print("Response Object:", response)
+        #print("Response Object:", response)
 
-        # Extract KQL Query from response
+        # Extract the sentence from the response
         words = []
         for chunk in response:
-            print(chunk)
+            #print(chunk)
             token = None
             if chunk["choices"]:
-                token = chunk["choices"][0]["delta"].get('content')
+                token = chunk["choices"][-1]["delta"].get('content')
             else:
                 token = ""
             
             if token and token != "[DONE]":
-                print("'" + token + "'")
+                #print("'" + token + "'")
                 words.append(token)
 
-        kql_query = ''.join(words)
+        sentence = ''.join(words)
 
-        print("KQL Query:")
-        print(kql_query)
+        print("Sentence:")
+        print(sentence)
 
-        # Execute KQL Query
-        kql_query = kql_query.replace("T\n| ", "['enriched-edr'] | ")
+        # Execute Query if KQL
+        if "KQL_START" in sentence:
+            kql_query = extract_content(sentence)
 
-        print("KQL Query with Table Name: " + kql_query)
+            if (kql_query is None):
+                response_to_stream_back = sentence
+            else:
+                print("KQL Query: " + kql_query)
 
-        if kql_query.startswith("['enriched-edr']") or kql_query.startswith("```['enriched-edr']") or kql_query.startswith("````\n['enriched-edr']"):
-            kql_response = client.execute("aoienriched", kql_query)
+                # Surround the table name with [''] if not already there!
+                if "['enriched-edr']" not in kql_query:
+                    kql_query = kql_query.replace("enriched-edr", "['enriched-edr']", 1)
 
-            print("KQL Response:")
-            print(kql_response)
+                print("KQL Query after formatting table name: " + kql_query)
 
-            # Convert KQL Response to a Pandas DataFrame
-            df = dataframe_from_result_table(kql_response.primary_results[0])
+                try:
+                    kql_response = client.execute("aoienriched", kql_query)
 
-            # Convert DataFrame as text
-            df_as_text = df.to_string()
+                    print("KQL Response:")
+                    print(kql_response)
 
-            print("Dataframe as text:")
-            print(df_as_text)
+                    # Convert KQL Response to a Pandas DataFrame
+                    df = dataframe_from_result_table(kql_response.primary_results[0])
 
-            response_to_stream_back = df_as_text
+                    # Convert DataFrame as text
+                    df_as_text = df.to_string()
+
+                    print("Dataframe as text:")
+                    print(df_as_text)
+
+                    response_to_stream_back = "Query: " + kql_query + "\n\n" + df_as_text
+                except Exception as e:
+                    response_to_stream_back = f"Query: {kql_query}\n\nError while executing this query.\n\nError: {e}"
         else:
+            print ("Regular Sentence: ")
             # Stream the original OpenAI response back as a stream
-            response_to_stream_back = kql_query
+            response_to_stream_back = sentence
 
         # Stream the text back to Frontend
         return Response(our_stream_without_data(response_to_stream_back, history_metadata), mimetype='text/event-stream')
