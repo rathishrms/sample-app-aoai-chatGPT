@@ -9,9 +9,9 @@ import uuid
 import time
 import re
 import pandas as pd
-import plotly as plt
 import plotly.express as px
-import plotly.io as pio
+from plotly.graph_objects import Figure
+from pandas.api.types import is_numeric_dtype, is_string_dtype
 from azure.identity import DefaultAzureCredential
 from flask import Flask, Response, request, jsonify, send_from_directory
 from dotenv import load_dotenv
@@ -722,8 +722,25 @@ def dataframe_from_result_table(table: "Union[KustoResultTable, KustoStreamingRe
 
     return frame
 
-def save_plot_as_image(plot: pd.plotting.PlotAccessor) -> str:
-    return None
+def generate_bar_plot(df: pd.DataFrame, x, y, barmode="stack") -> Figure:
+    logging.info("generate_bar_plot...")
+
+    figure = px.bar(data_frame=df, x=x, y=y, barmode=barmode)
+
+    return figure
+    
+def save_plot_as_image(figure: Figure) -> str:
+    logging.info("save_plot_as_image...")
+    
+    # Save plot as image
+    file_name = uuid.uuid4()
+    image_path = f"./static/assets/{file_name}.png"
+
+    # save as PNG
+    figure.write_image(file = image_path, format = "png")
+    
+    return f"{file_name}.png"
+
 
 def conversation_without_data(request_body):
     logging.info("conversation_without_data")
@@ -851,46 +868,98 @@ def conversation_without_data(request_body):
                     df_load_failed = False
                 except Exception as e:
                     df_load_failed = True
-                    response_context['text_to_send_back'] = f"{response_context['text_to_send_back']}## Query Output:\n\n{response_context['df_as_text']}\n\n### Error while loading dataframe:\n\nError: {e}"
+                    response_context['text_to_send_back'] = f"{response_context['text_to_send_back']}\n\n### Error while loading dataframe:\n\nError: {e}"
                 
                 if not df_load_failed:
-                    try:
-                        logging.info(f"Generating plot...")
+                    df = response_context['df']
+                    
+                    shape = df.shape
+                    num_rows = shape[0]
+                    num_columns = shape[1]
 
-                        # Get the plot from DataFrame
-                        response_context['plot'] = response_context['df'].plot()
-                        
-                        plot_failed = False
-                    except Exception as e:
-                        plot_failed = True
-                        response_context['text_to_send_back'] = f"{response_context['text_to_send_back']}\n\n### Error while loading plot:\n\nError: {e}"
+                    logging.info(f"Dataframe Shape: {shape}, Rows: {num_rows}, Columns: {num_columns}")
+                    logging.info(f"Dataframe Columns: {df.columns}, Data Types: {df.dtypes.tolist()}")
+                    
+                    '''
+                    Index   # of Rows   # of Columns    Plot?   Plot Context
+                    1       1-5         1               Yes     Bar, if the column is Numerical
+                    2       N           1               No      Skip, if the column is Non-Numerical
+                    3       N           1               Yes     Bar, if the column is Numerical
+                    4       1           N               Yes     GroupedBar, if we have 1 text column and others are Numerical
+                    5       1           N               No      Skip, if all columns are Non-Numerical
+                    6       N           1               Yes     Histogram, if the column is Numerical
+                    7       N           N               Yes     
+                    '''
+                    plot_context = {
+                        "plot": False,
+                        "plot_type": None,
+                        "x": None,
+                        "y": None,
+                        "categories": None
+                    }
+                    
+                    print(df.columns[0])
+                    
+                    if num_rows >= 1 and num_rows <= 5 and num_columns == 1 and is_numeric_dtype(df[df.columns[0]]):
+                        # Bar
+                        plot_context["plot"] = True
+                        plot_context["plot_type"] = "bar"
+                        plot_context["x"] = None
+                        plot_context["y"] = df.columns[0]
+                    elif num_columns == 1 and not is_numeric_dtype(df[df.columns[0]]):
+                        # Skip
+                        plot_context["plot"] = False
+                    elif num_columns >= 2 and not is_numeric_dtype(df[df.columns[0]]) and is_numeric_dtype(df[df.columns[1]]):
+                        # Bar
+                        plot_context["plot"] = True
+                        plot_context["plot_type"] = "bar"
+                        plot_context["x"] = df.columns[0]
+                        plot_context["y"] = df.columns[1]
+                    else:
+                        # Skip
+                        plot_context["plot"] = False
 
-                shape = response_context['df'].shape
-                logging.info(f"Dataframe Shape: {shape}")
-                
-                if not plot_failed:
-                    try:
-                        logging.info(f"Saving plot as image...")
 
-                        # Save plot as image
-                        file_name = uuid.uuid4()
-                        image_path = f"./static/assets/{file_name}.png"
-
-                        df = response_context["df"]
-
-                        fig = px.bar(data_frame=df)
-                        fig.write_image(file = image_path, format = "png")
-
-                        # Append image URL to the response with the format ![Alt text](https://picsum.photos/536/354)
-                        response_context['text_to_send_back'] = f"{response_context['text_to_send_back']}## Image:\n\n![Alt text](/assets/{file_name}.png)"
-                        
+                    if plot_context["plot"]:
+                        figure = None
+                        plot_generation_failed = False
                         image_save_failed = False
-                    except Exception as e:
-                        image_save_failed = True
-                        response_context['text_to_send_back'] = f"{response_context['text_to_send_back']}### Error while saving plot as image!\n\nError: {e}"
-                
-                if not plot_failed and not image_save_failed:
-                    logging.info(f"Completed processing. Reponse Context: {response_context}")
+
+                        try:
+                            # Get the plot from DataFrame
+                            #response_context['plot'] = response_context['df'].plot()
+                              
+                            match plot_context["plot_type"]:
+                                case "bar":
+                                    figure = generate_bar_plot(df=df, x=plot_context["x"], y=plot_context["y"], barmode="stack")
+
+                                case "grouped_bar":
+                                    figure = generate_bar_plot(df=df, x=plot_context["x"], y=plot_context["y"], barmode="group")
+
+                                case _:
+                                    logging.warn(f"Unsupported plot type {plot_context['plot_type']}. Skipping plot generation...")
+
+                            plot_generation_failed = False
+                        except Exception as e:
+                            plot_generation_failed = True
+                            response_context['text_to_send_back'] = f"{response_context['text_to_send_back']}\n\n### Error while generating plot:\n\nError: {e}"
+
+                        if figure:
+                            try:
+                                file_name = save_plot_as_image(figure=figure)
+
+                                # Append image URL to the response with the format ![Alt text](https://picsum.photos/536/354)
+                                response_context['text_to_send_back'] = f"{response_context['text_to_send_back']}## Image:\n\n![Alt text](/assets/{file_name})"
+                                
+                                image_save_failed = False
+                            except Exception as e:
+                                image_save_failed = True
+                                response_context['text_to_send_back'] = f"{response_context['text_to_send_back']}### Error while saving plot as image!\n\nError: {e}"
+                    else:
+                        logging.info("Skipping plot generation!!!")                        
+
+                if plot_context["plot"] and not plot_generation_failed and not image_save_failed:
+                    logging.info(f"Completed processing request and plotting it. Reponse Context: {response_context}")
                 else:
                     logging.error(f"Failure in request processing. Response Context: {response_context}")
         else:
