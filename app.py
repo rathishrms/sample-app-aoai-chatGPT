@@ -865,14 +865,8 @@ def conversation_without_data(request_body):
                         plot_failed = True
                         response_context['text_to_send_back'] = f"{response_context['text_to_send_back']}\n\n### Error while loading plot:\n\nError: {e}"
 
-                shape = response_context['df'].shape()
-                
-                # 1 Row and 1 Column:
-                #     Draw bar if value is a number else skip
-                # 1 Row and N Columns
-                # 
-                # Shape: 1 Row and 2 Columns: Plot Bar
-                # Shape: N Rows and 1 Columns: Don't plot Bar unless the column contains numbers
+                shape = response_context['df'].shape
+                logging.info(f"Dataframe Shape: {shape}")
                 
                 if not plot_failed:
                     try:
@@ -883,7 +877,6 @@ def conversation_without_data(request_body):
                         image_path = f"./static/assets/{file_name}.png"
 
                         df = response_context["df"]
-                        logging.info(f"Dataframe Shape: {df.shape}")
 
                         fig = px.bar(data_frame=df)
                         fig.write_image(file = image_path, format = "png")
