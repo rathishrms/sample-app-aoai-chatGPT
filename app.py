@@ -12,7 +12,6 @@ import pandas as pd
 import plotly as plt
 import plotly.express as px
 import plotly.io as pio
-import requests
 from azure.identity import DefaultAzureCredential
 from flask import Flask, Response, request, jsonify, send_from_directory
 from dotenv import load_dotenv
@@ -42,6 +41,8 @@ def assets(path):
 
 # Debug settings
 DEBUG = os.environ.get("DEBUG", "false")
+logging.basicConfig(level=logging.INFO)
+
 DEBUG_LOGGING = DEBUG.lower() == "true"
 if DEBUG_LOGGING:
     logging.basicConfig(level=logging.DEBUG)
@@ -126,18 +127,6 @@ cluster = KUSTO_CLUSTER
 kcsb = KustoConnectionStringBuilder.with_aad_application_key_authentication(cluster, KUSTO_MANAGED_IDENTITY_APP_ID, KUSTO_MANAGED_IDENTITY_SECRET,  AAD_TENANT_ID)
 client = KustoClient(kcsb)
 
-template_prefix = """
-<|im_start|>system
-I have an Azure Data Explorer (Kusto) table containing the following columns: 
-eventTimeFlow,flowRecord_flowRecordType,flowRecord_subscriberInfo_imsi,flowRecord_keys_sessionId,flowRecord_dpiStringInfo_application,flowRecord_dpiStringInfo_layer7Protocol,flowRecord_gatewayInfo_gwNodeID,flowRecord_dpiStringInfo_operatingSystem,flowRecord_creationtime_timesecs,flowRecord_creationtime_timeusecs,flowRecord_networkStatsInfo_downlinkFlowPeakThroughput,flowRecord_networkStatsInfo_uplinkFlowPeakThroughput,flowRecord_networkStatsInfo_downlinkFlowActivityDuration,flowRecord_networkStatsInfo_uplinkFlowActivityDuration,flowRecord_networkStatsInfo_downlinkInitialRTT_timesecs,flowRecord_networkStatsInfo_downlinkInitialRTT_timeusecs,flowRecord_networkStatsInfo_uplinkInitialRTT_timesecs,flowRecord_networkStatsInfo_uplinkInitialRTT_timeusecs,flowRecord_networkStatsInfo_closureReason,flowRecord_networkPerfInfo_initialRTT_timesecs,flowRecord_networkPerfInfo_initialRTT_timeusecs,flowRecord_networkPerfInfo_HttpTtfbTime_timesecs,flowRecord_networkPerfInfo_HttpTtfbTime_timeusecs,flowRecord_dataStats_upLinkOctets,flowRecord_dataStats_downLinkOctets,flowRecord_dataStats_downLinkPackets,flowRecord_dataStats_downLinkDropPackets,flowRecord_dataStats_upLinkPackets,flowRecord_dataStats_upLinkDropPackets,flowRecord_tcpRetransInfo_downlinkRetransBytes,flowRecord_tcpRetransInfo_uplinkRetransBytes,flowRecord_tcpRetransInfo_downlinkRetransPackets,flowRecord_tcpRetransInfo_uplinkRetransPackets,flowRecord_ipTuple_networkIpAddress,flowRecord_ipTuple_networkPort,flowRecord_ipTuple_protocol,flowRecord_keys_flowId,eventTimeSession,sessionRecord_subscriberInfo_userLocationInfo_ecgi_eci,sessionRecord_keys_sessionId,sessionRecord_subscriberInfo_imsi,sessionRecord_subscriberInfo_msisdn,sessionRecord_subscriberInfo_imeisv_tac,sessionRecord_servingNetworkInfo_apnId,sessionRecord_servingNetworkInfo_nodeAddress,sessionRecord_servingNetworkInfo_nodePlmnId_mcc,sessionRecord_servingNetworkInfo_nodePlmnId_mnc,eventTimeHTTP,httpRecord_keys_flowId,httpRecord_keys_sessionId,httpRecord_httpTransactionRecord_subscriberInformation_gwNodeID,httpRecord_httpTransactionRecord_subscriberInformation_imsi,httpRecord_keys_transactionId,httpRecord_httpTransactionRecord_dpiInformation_application,httpRecord_httpTransactionRecord_subscriberInformation_realApn,httpRecord_httpTransactionRecord_requestInformation_failureReason,httpRecord_httpTransactionRecord_responseInformation_responseStatus,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_maxDownstreamMSS,httpRecord_httpTransactionRecord_tcpServerConnectionInformation_MSS,httpRecord_httpTransactionRecord_tcpServerConnectionInformation_rtt,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelNoneTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelMildTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelModerateTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelSevereTime,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_minRTT,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_maxRTT,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_avgRTT,httpRecord_httpTransactionRecord_tcpSplicingInformation_tlsSNI,httpRecord_httpTransactionRecord_udpProxyInformation_quicSni,httpRecord_httpTransactionRecord_requestInformation_serverUrl_Host,Column71
-
-
-Write an KQL query based on the user input below. Answer in a concise manner. Answer only with the KQL query where the table name is T, no extra text.
-
-user input: 
-"""
-template_sufix = "<|im_end|>\n<|im_start|>assistant"
-
 # Define functions to call the OpenAI API and run KQL query
 def call_openai_new(messages):
     response = openai.ChatCompletion.create(
@@ -164,38 +153,38 @@ def call_openai_kql_response_new(messages):
     df = dataframe_from_result_table(response.primary_results[0])
     return df
 
-def call_openai(template_prefix, text):
-    prompt = template_prefix + text + template_sufix
-    response = openai.Completion.create(
-        model=utils.OPENAI_DEPLOYMENT_NAME,
-        engine=utils.OPENAI_DEPLOYMENT_NAME,
-        prompt=prompt,
-        temperature=0,
-        max_tokens=4096,
-        top_p=0.95,
-        frequency_penalty=0,
-        presence_penalty=0,
-        stop=["<|im_end|>"])
-    # print(response)
-    # response = response['choices'][0]['text']
-    response = response.choices[0].text.strip()
-    response = utils.remove_chars("\n", response)
-    response=utils.start_after_string("Answer:", response)
-    response=utils.remove_tail_tags("<|im_end|>", response)
-    return response
+# def call_openai(template_prefix, text):
+#     prompt = template_prefix + text + template_sufix
+#     response = openai.Completion.create(
+#         model=utils.OPENAI_DEPLOYMENT_NAME,
+#         engine=utils.OPENAI_DEPLOYMENT_NAME,
+#         prompt=prompt,
+#         temperature=0,
+#         max_tokens=4096,
+#         top_p=0.95,
+#         frequency_penalty=0,
+#         presence_penalty=0,
+#         stop=["<|im_end|>"])
+#     # print(response)
+#     # response = response['choices'][0]['text']
+#     response = response.choices[0].text.strip()
+#     response = utils.remove_chars("\n", response)
+#     response=utils.start_after_string("Answer:", response)
+#     response=utils.remove_tail_tags("<|im_end|>", response)
+#     return response
 
-def call_openai_kql_response(text):
-    response = call_openai(template_prefix, text)
+# def call_openai_kql_response(text):
+#     response = call_openai(template_prefix, text)
 
-    # print("Raw response:", response)
-    query = response.replace("T", "['enriched-edr']")
-    # query = response.replace("T", "monitor")
-    query = query.replace("```", "")
-    # print("Generated KQL query:", query)
-    response = client.execute("aoienriched", query)
+#     # print("Raw response:", response)
+#     query = response.replace("T", "['enriched-edr']")
+#     # query = response.replace("T", "monitor")
+#     query = query.replace("```", "")
+#     # print("Generated KQL query:", query)
+#     response = client.execute("aoienriched", query)
 
-    df = dataframe_from_result_table(response.primary_results[0])
-    return df
+#     df = dataframe_from_result_table(response.primary_results[0])
+#     return df
 
 # df = call_openai_kql_response("calculate the total uplink and downlink octets for each application in the 'enriched-edr' table.")
 # print(df)
@@ -203,8 +192,8 @@ def call_openai_kql_response(text):
 # df = call_openai_kql_response("the distribution of sessions across different applications:")
 # print(df)
 
-df = call_openai_kql_response("Total uplink and downlink octets by application")
-print(df)
+# df = call_openai_kql_response("Total uplink and downlink octets by application")
+# print(df)
 
 # Initialize a CosmosDB client with AAD auth and containers for Chat History
 cosmos_conversation_client = None
@@ -555,14 +544,12 @@ def conversation_with_data(request_body):
         return Response(stream_with_data(body, headers, endpoint, history_metadata), mimetype='text/event-stream')
 
 def stream_without_data(response, history_metadata={}):
-    #print("stream_without_data")
     responseText = ""
     for line in response:
         if line["choices"]:
             deltaText = line["choices"][0]["delta"].get('content')
         else:
             deltaText = ""
-        #print(deltaText)
         if deltaText and deltaText != "[DONE]":
             responseText = deltaText
 
@@ -579,23 +566,16 @@ def stream_without_data(response, history_metadata={}):
             }],
             "history_metadata": history_metadata
         }
-        #print(response_obj)
-        #print('--------')
         yield format_as_ndjson(response_obj)
 
 def our_stream_without_data(full_response, history_metadata={}):
-    print("our_stream_without_data: sending response text")
-    print(full_response)
-
-    # words = []
-
-    # for c in full_response:
-    #     words.append(c)
+    logging.info("our_stream_without_data: sending response text")
+    
+    if DEBUG_LOGGING:
+        logging.debug(full_response)
 
     # Split the text into words
     words = re.findall(r'\S+|\n|\W', full_response)
-
-    print(words)
 
     session_uuid = uuid.uuid4()
     session_created_time = int(time.time())
@@ -604,7 +584,9 @@ def our_stream_without_data(full_response, history_metadata={}):
     start_message = ["#START#", "#START-SECOND#"]
     words = start_message + words
 
-    print(words)
+    if DEBUG_LOGGING:
+        logging.debug(words)
+
     for word in words:
         response_obj = {}
 
@@ -667,47 +649,87 @@ def our_stream_without_data(full_response, history_metadata={}):
 
         yield format_as_ndjson(response_obj)
 
-    # for line in response:
-    #     print(line)
-    #     if line["choices"]:
-    #         deltaText = line["choices"][0]["delta"].get('content')
-    #     else:
-    #         deltaText = ""
-    #     if deltaText and deltaText != "[DONE]":
-    #         responseText = deltaText
-
-    #     response_obj = {
-    #         "id": line["id"],
-    #         "model": line["model"],
-    #         "created": line["created"],
-    #         "object": line["object"],
-    #         "choices": [{
-    #             "messages": [{
-    #                 "role": "assistant",
-    #                 "content": responseText
-    #             }]
-    #         }],
-    #         "history_metadata": history_metadata
-    #     }
-    #     yield format_as_ndjson(response_obj)
-
-
-def extract_content(input_string):
-    start_substring = "KQL_START"
-    end_substring = "KQL_END"
-
-    start_index = input_string.find(start_substring)
-    end_index = input_string.find(end_substring)
+def extract_content(startPhrase, endPhrase, text):
+    start_index = text.find(startPhrase)
+    end_index = text.find(endPhrase)
 
     if start_index != -1 and end_index != -1 and start_index < end_index:
-        result = input_string[start_index + len(start_substring):end_index].strip()
+        result = text[start_index + len(startPhrase):end_index].strip()
         return result
     else:
         return None
 
+from typing import TYPE_CHECKING, Union
+
+if TYPE_CHECKING:
+    from azure.kusto.data._models import KustoResultTable, KustoStreamingResultTable
+
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License
+def to_pandas_timedelta(raw_value: Union[int, float, str]) -> pd.Timedelta:
+    """
+    Transform a raw python value to a pandas timedelta.
+    """
+
+    if isinstance(raw_value, (int, float)):
+        # https://docs.microsoft.com/en-us/dotnet/api/system.datetime.ticks
+        # Kusto saves up to ticks, 1 tick == 100 nanoseconds
+        return pd.to_timedelta(raw_value * 100, unit="ns")
+    if isinstance(raw_value, str):
+        # The timespan format Kusto returns is 'd.hh:mm:ss.ssssss' or 'hh:mm:ss.ssssss' or 'hh:mm:ss'
+        # Pandas expects 'd days hh:mm:ss.ssssss' or 'hh:mm:ss.ssssss' or 'hh:mm:ss'
+        parts = raw_value.split(":")
+        if "." not in parts[0]:
+            return pd.to_timedelta(raw_value)
+        else:
+            formatted_value = raw_value.replace(".", " days ", 1)
+            return pd.to_timedelta(formatted_value)
+
+def dataframe_from_result_table(table: "Union[KustoResultTable, KustoStreamingResultTable]", nullable_bools: bool = False) -> pd.DataFrame:
+    """Converts Kusto tables into pandas DataFrame.
+    :param azure.kusto.data._models.KustoResultTable table: Table received from the response.
+    :param nullable_bools: When True, converts bools that are 'null' from kusto or 'None' from python to pandas.NA. This will be the default in the future.
+    :return: pandas DataFrame.
+    """
+    import numpy as np
+
+    if not table:
+        raise ValueError()
+
+    from azure.kusto.data._models import KustoResultTable, KustoStreamingResultTable
+
+    if not isinstance(table, KustoResultTable) and not isinstance(table, KustoStreamingResultTable):
+        raise TypeError("Expected KustoResultTable or KustoStreamingResultTable got {}".format(type(table).__name__))
+
+    columns = [col.column_name for col in table.columns]
+    frame = pd.DataFrame(table.raw_rows, columns=columns)
+
+    # fix types
+    for col in table.columns:
+        if col.column_type == "bool":
+            frame[col.column_name] = frame[col.column_name].astype(pd.BooleanDtype() if nullable_bools else bool)
+        elif col.column_type == "int":
+            frame[col.column_name] = frame[col.column_name].astype(pd.Int32Dtype())
+        elif col.column_type == "long":
+            frame[col.column_name] = frame[col.column_name].astype(pd.Int64Dtype())
+        elif col.column_type == "real" or col.column_type == "decimal":
+            frame[col.column_name] = frame[col.column_name].replace("NaN", np.NaN).replace("Infinity", np.PINF).replace("-Infinity", np.NINF)
+            frame[col.column_name] = pd.to_numeric(frame[col.column_name], errors="coerce").astype(pd.Float64Dtype())
+        elif col.column_type == "datetime":
+            frame[col.column_name] = pd.to_datetime(frame[col.column_name], errors="coerce")
+        elif col.column_type == "timespan":
+            frame[col.column_name] = frame[col.column_name].apply(to_pandas_timedelta)
+
+    return frame
+
+def save_plot_as_image(plot: pd.plotting.PlotAccessor) -> str:
+    return None
+
 def conversation_without_data(request_body):
-    print("conversation_without_data")
-    print(request_body)
+    logging.info("conversation_without_data")
+    
+    if DEBUG_LOGGING:
+        logging.debug(f"Request Body: {request_body}")
 
     openai.api_type = "azure"
     openai.api_base = AZURE_OPENAI_ENDPOINT if AZURE_OPENAI_ENDPOINT else f"https://{AZURE_OPENAI_RESOURCE}.openai.azure.com/"
@@ -715,7 +737,9 @@ def conversation_without_data(request_body):
     openai.api_key = AZURE_OPENAI_KEY
 
     request_messages = request_body["messages"]
-    print(request_messages)
+    if DEBUG_LOGGING:
+        logging.debug(f"Request Messages: {request_messages}")
+    
     messages = [{
         "role": "system",
         "content": "Behaviour: Behave like an Azure Data Explorer Kusto Query Language expert. Your task is to provide KQL statements to the various question being asked for the below tables.\nContextual Data: I have a dataset wherein i have a table named 'enriched-edr'. It has the below comma separated columns and the corresponding datatype for each column in the format column_name:datatype. Schema for the various tables is as below:\nTable #1: 'enriched-edr'\n\nColumns:\n\neventTimeFlow:datetime,flowRecord_flowRecordType:string,flowRecord_subscriberInfo_imsi:string,flowRecord_keys_sessionId:real,flowRecord_dpiStringInfo_application:string,flowRecord_dpiStringInfo_layer7Protocol:string,flowRecord_gatewayInfo_gwNodeID:string,flowRecord_dpiStringInfo_operatingSystem:string,flowRecord_creationtime_timesecs:string,flowRecord_creationtime_timeusecs:string,flowRecord_networkStatsInfo_downlinkFlowPeakThroughput:long,flowRecord_networkStatsInfo_uplinkFlowPeakThroughput:long,flowRecord_networkStatsInfo_downlinkFlowActivityDuration:string,flowRecord_networkStatsInfo_uplinkFlowActivityDuration:string,flowRecord_networkStatsInfo_downlinkInitialRTT_timesecs:long,flowRecord_networkStatsInfo_downlinkInitialRTT_timeusecs:long,flowRecord_networkStatsInfo_uplinkInitialRTT_timesecs:long,flowRecord_networkStatsInfo_uplinkInitialRTT_timeusecs:long,flowRecord_networkStatsInfo_closureReason:string,flowRecord_networkPerfInfo_initialRTT_timesecs:long,flowRecord_networkPerfInfo_initialRTT_timeusecs:long,flowRecord_networkPerfInfo_HttpTtfbTime_timesecs:long,flowRecord_networkPerfInfo_HttpTtfbTime_timeusecs:long,flowRecord_dataStats_upLinkOctets:long,flowRecord_dataStats_downLinkOctets:long,flowRecord_dataStats_downLinkPackets:long,flowRecord_dataStats_downLinkDropPackets:long,flowRecord_dataStats_upLinkPackets:long,flowRecord_dataStats_upLinkDropPackets:long,flowRecord_tcpRetransInfo_downlinkRetransBytes:long,flowRecord_tcpRetransInfo_uplinkRetransBytes:long,flowRecord_tcpRetransInfo_downlinkRetransPackets:string,flowRecord_tcpRetransInfo_uplinkRetransPackets:string,flowRecord_ipTuple_networkIpAddress:string,flowRecord_ipTuple_networkPort:long,flowRecord_ipTuple_protocol:string,flowRecord_keys_flowId:real,eventTimeSession:datetime,sessionRecord_subscriberInfo_userLocationInfo_ecgi_eci:long,sessionRecord_keys_sessionId:real,sessionRecord_subscriberInfo_imsi:real,sessionRecord_subscriberInfo_msisdn:string,sessionRecord_subscriberInfo_imeisv_tac:longsessionRecord_servingNetworkInfo_apnId:string,sessionRecord_servingNetworkInfo_nodeAddress:string,sessionRecord_servingNetworkInfo_nodePlmnId_mcc:longsessionRecord_servingNetworkInfo_nodePlmnId_mnc:long,eventTimeHTTP:string,httpRecord_keys_flowId:real,httpRecord_keys_sessionId:real,httpRecord_httpTransactionRecord_subscriberInformation_gwNodeID:string,httpRecord_httpTransactionRecord_subscriberInformation_imsi:real,httpRecord_keys_transactionId:long,httpRecord_httpTransactionRecord_dpiInformation_application:string,httpRecord_httpTransactionRecord_subscriberInformation_realApn:string,httpRecord_httpTransactionRecord_requestInformation_failureReason:string,httpRecord_httpTransactionRecord_responseInformation_responseStatus:long,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_maxDownstreamMSS:long,httpRecord_httpTransactionRecord_tcpServerConnectionInformation_MSS:long,httpRecord_httpTransactionRecord_tcpServerConnectionInformation_rtt:long,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelNoneTime:long,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelMildTime:long,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelModerateTime:long,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_congestionLevelSevereTime:long,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_minRTT:long,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_maxRTT:string,httpRecord_httpTransactionRecord_tcpClientConnectionInformation_avgRTT:string,httpRecord_httpTransactionRecord_tcpSplicingInformation_tlsSNI:string,httpRecord_httpTransactionRecord_udpProxyInformation_quicSni:string,httpRecord_httpTransactionRecord_requestInformation_serverUrl_Host:string,Column71:string\nInstructions: In your response, write an KQL query based on the user input message.\n1. Answer in a concise manner.\n2. Answer only with the KQL query statement\n3. Do not add any extra text in your response.\n4. Do not preface your response with anything.\n5. In the section which has KQL statement, prefix the KQL statement with \"KQL_START\" and suffix the section with \"KQL_END\"\n6. Don't use the prefix and suffix in case the response is expressive and does not contain only KQL statement and also has regular english sentences"}
@@ -727,26 +751,10 @@ def conversation_without_data(request_body):
             "role": last_message["role"] ,
             "content": last_message["content"]
         })
-    print("Last Message:")
-    print(last_message)
 
-    # for message in request_messages:
-    #     if message:
-    #         messages.append({
-    #             "role": message["role"] ,
-    #             "content": message["content"]
-    #         })
-    
-    # latest_message = request_body['messages'][-1]['content']
-    # print(latest_message)
-    # df = call_openai_kql_response(latest_message)
-    # print(df)
-    # df_as_text = df.to_string()
-    # print("--------")
-    # print(df_as_text)
-
-    print("Messages:")
-    print(messages)
+    logging.info(f"Last Message: {last_message}")
+    if DEBUG_LOGGING:
+        logging.debug(f"Messages: {messages}")
 
     response = openai.ChatCompletion.create(
         engine=utils.OPENAI_DEPLOYMENT_NAME,
@@ -761,7 +769,8 @@ def conversation_without_data(request_body):
     history_metadata = request_body.get("history_metadata", {})
 
     if not SHOULD_STREAM:
-        print("mohit 1")
+        logging.info("NOT SHOULD_STREAM")
+
         response_obj = {
             "id": response,
             "model": response.model,
@@ -778,12 +787,10 @@ def conversation_without_data(request_body):
 
         return jsonify(response_obj), 200
     else:
-        #print("Response Object:", response)
-
         # Extract the sentence from the response
         words = []
+        
         for chunk in response:
-            #print(chunk)
             token = None
             if chunk["choices"]:
                 token = chunk["choices"][-1]["delta"].get('content')
@@ -791,77 +798,115 @@ def conversation_without_data(request_body):
                 token = ""
             
             if token and token != "[DONE]":
-                #print("'" + token + "'")
                 words.append(token)
 
         sentence = ''.join(words)
 
-        print("Sentence:")
-        print(sentence)
+        logging.info(f"Sentence: {sentence}")
+        
+        START_PHRASE = "KQL_START"
+        END_PHRASE = "KQL_END"
+        
+        response_context = {
+            'sentence': sentence
+        }
 
         # Execute Query if KQL
-        if "KQL_START" in sentence:
-            kql_query = extract_content(sentence)
+        if START_PHRASE in sentence:
+            kql_query = extract_content(START_PHRASE, END_PHRASE, sentence)
+            
+            response_context['original_kql_query'] = kql_query
 
             if (kql_query is None):
-                response_to_stream_back = sentence
+                response_context['text_to_send_back'] = f"{response_context['sentence']}"
             else:
-                print("KQL Query: " + kql_query)
+                response_context['text_to_send_back'] = f"## Original KQL Query:\n\n{response_context['original_kql_query']}\n\n"
+                if DEBUG_LOGGING:
+                    logging.debug(f"KQL Query: {response_context['original_kql_query']}")
 
-                # Surround the table name with [''] if not already there!
+                # Surround the table name with [''] if not already done by OpenAI!
+                response_context['kql_query_with_table'] = kql_query
+
                 if "['enriched-edr']" not in kql_query:
-                    kql_query = kql_query.replace("enriched-edr", "['enriched-edr']", 1)
+                    response_context['kql_query_with_table'] = kql_query.replace("enriched-edr", "['enriched-edr']", 1)
 
-                print("KQL Query after formatting table name: " + kql_query)
+                response_context['text_to_send_back'] =  f"{response_context['text_to_send_back']}## KQL Query with Table:\n\n{response_context['kql_query_with_table']}\n\n"
+                logging.info(f"KQL Query after formatting table name: {response_context['kql_query_with_table']}")
 
                 try:
-                    kql_response = client.execute("aoienriched", kql_query)
-
-                    print("KQL Response:")
-                    print(kql_response)
+                    # Execute KQL Query on cluster
+                    response_context['kql_response'] = client.execute("aoienriched", response_context['kql_query_with_table'])
+                    if DEBUG_LOGGING:
+                        logging.debug(f"KQL Response: {response_context['kql_response']}")
 
                     # Convert KQL Response to a Pandas DataFrame
-                    df = dataframe_from_result_table(kql_response.primary_results[0])
+                    response_context['df'] = dataframe_from_result_table(response_context['kql_response'].primary_results[0])
 
                     # Convert DataFrame as text
-                    df_as_text = df.to_string()
+                    response_context['df_as_text'] = f"```python\n{response_context['df'].to_string()}\n```"
+                    logging.info(f"Dataframe as Text: {response_context['df_as_text']}")
 
-                    print("Dataframe as text:")
-                    print(df_as_text)
+                    response_context['text_to_send_back'] =  f"{response_context['text_to_send_back']}## Query Output:\n\n{response_context['df_as_text']}\n\n"
 
-                    # Assuming this is plottable data, use plotly to render the image
-                    #![Alt text](https://picsum.photos/536/354)
-
-                    # # Example DataFrame
-                    # data = {'Category': df.columns, 'Values': df.iloc[:]}
-
-                    # df = pd.DataFrame(data)
-
-                    # # Create a bar graph using Plotly Express
-                    # fig = px.bar(df, x='Category', y='Values', title='Bar Graph of DataFrame')
-
-                    # # Save the plot as an image
-                    # image_path = 'mohit.png'
-                    # fig.write_image(image_path)
-
-                    # fig = df.plot().figure
-                    # fig.show()
-                    # print(fig)
-                    # pio.write_image(fig, "./mohit.png")
-                    
-                    # Save as a file in local system
-                    # Send URL back to frontend along with the original response text
-
-                    response_to_stream_back = f"Query:\n\n{kql_query}\n\nQuery Output:\n\n{df_as_text}\n\nImage:\n\nTODO_THIS_PART"
+                    df_load_failed = False
                 except Exception as e:
-                    response_to_stream_back = f"Query:\n\n{kql_query}\n\nQuery Output:\n\n{df_as_text}\n\nError while executing this query.\n\nError: {e}"
+                    df_load_failed = True
+                    response_context['text_to_send_back'] = f"{response_context['text_to_send_back']}## Query Output:\n\n{response_context['df_as_text']}\n\n### Error while loading dataframe:\n\nError: {e}"
+                
+                if not df_load_failed:
+                    try:
+                        logging.info(f"Generating plot...")
+
+                        # Get the plot from DataFrame
+                        response_context['plot'] = response_context['df'].plot()
+                        
+                        plot_failed = False
+                    except Exception as e:
+                        plot_failed = True
+                        response_context['text_to_send_back'] = f"{response_context['text_to_send_back']}\n\n### Error while loading plot:\n\nError: {e}"
+
+                shape = response_context['df'].shape()
+                
+                # 1 Row and 1 Column:
+                #     Draw bar if value is a number else skip
+                # 1 Row and N Columns
+                # 
+                # Shape: 1 Row and 2 Columns: Plot Bar
+                # Shape: N Rows and 1 Columns: Don't plot Bar unless the column contains numbers
+                
+                if not plot_failed:
+                    try:
+                        logging.info(f"Saving plot as image...")
+
+                        # Save plot as image
+                        file_name = uuid.uuid4()
+                        image_path = f"./static/assets/{file_name}.png"
+
+                        df = response_context["df"]
+                        logging.info(f"Dataframe Shape: {df.shape}")
+
+                        fig = px.bar(data_frame=df)
+                        fig.write_image(file = image_path, format = "png")
+
+                        # Append image URL to the response with the format ![Alt text](https://picsum.photos/536/354)
+                        response_context['text_to_send_back'] = f"{response_context['text_to_send_back']}## Image:\n\n![Alt text](/assets/{file_name}.png)"
+                        
+                        image_save_failed = False
+                    except Exception as e:
+                        image_save_failed = True
+                        response_context['text_to_send_back'] = f"{response_context['text_to_send_back']}### Error while saving plot as image!\n\nError: {e}"
+                
+                if not plot_failed and not image_save_failed:
+                    logging.info(f"Completed processing. Reponse Context: {response_context}")
+                else:
+                    logging.error(f"Failure in request processing. Response Context: {response_context}")
         else:
-            print ("Regular Sentence: ")
+            logging.info("Response is not a KQL query!")
             # Stream the original OpenAI response back as a stream
-            response_to_stream_back = sentence
+            response_context['text_to_send_back'] = sentence
 
         # Stream the text back to Frontend
-        return Response(our_stream_without_data(response_to_stream_back, history_metadata), mimetype='text/event-stream')
+        return Response(our_stream_without_data(response_context['text_to_send_back'], history_metadata), mimetype='text/event-stream')
 
 @app.route("/conversation", methods=["GET", "POST"])
 def conversation():
