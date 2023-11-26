@@ -12,3 +12,4 @@ azure.kusto.data
 plotly
 matplotlib
 kaleido
+langchain
