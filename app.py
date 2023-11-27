@@ -998,7 +998,9 @@ In your response, write an KQL query based on the user input message.
     if DEBUG_LOGGING:
         logging.debug(f"Messages: {messages}")
 
-    stop_sequence = AZURE_OPENAI_STOP_SEQUENCE.split("|") if AZURE_OPENAI_STOP_SEQUENCE else None
+    stop_sequence = (
+        AZURE_OPENAI_STOP_SEQUENCE.split("|") if AZURE_OPENAI_STOP_SEQUENCE else None
+    )
     response = openai.ChatCompletion.create(
         engine=utils.OPENAI_DEPLOYMENT_NAME,
         messages=messages,
@@ -1070,7 +1072,8 @@ In your response, write an KQL query based on the user input message.
                 response_context["text_to_send_back"] = ""
                 if DEBUG_LOGGING:
                     logging.debug(
-                        f"KQL Query: {response_context['original_kql_query']}"
+                        f"KQL Query: [!CAUTION]
+                        {response_context['original_kql_query']}"
                     )
 
                 # Surround the table name with [''] if not already done by OpenAI!
