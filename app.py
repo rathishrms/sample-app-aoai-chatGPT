@@ -1072,8 +1072,7 @@ In your response, write an KQL query based on the user input message.
                 response_context["text_to_send_back"] = ""
                 if DEBUG_LOGGING:
                     logging.debug(
-                        f"KQL Query: [!CAUTION]
-                        {response_context['original_kql_query']}"
+                        f"KQL Query: [!CAUTION] {response_context['original_kql_query']}"
                     )
 
                 # Surround the table name with [''] if not already done by OpenAI!
