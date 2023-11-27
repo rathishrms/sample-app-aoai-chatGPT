@@ -587,8 +587,8 @@ const Chat = () => {
                                     className={styles.chatIcon}
                                     aria-hidden="true"
                                 />
-                                <h1 className={styles.chatEmptyStateTitle}>Welcome to AOI Insights Bot!!</h1>
-                                <h2 className={styles.chatEmptyStateSubtitle}>This chatbot is configured to answer your telco related analytics questions</h2>
+                                <h1 className={styles.chatEmptyStateTitle}>Welcome to AOI IntelliSync!!</h1>
+                                <h2 className={styles.chatEmptyStateSubtitle}>Your AOI intelligent assistant!</h2>
                             </Stack>
                         ) : (
                             <div className={styles.chatMessageStream} style={{ marginBottom: isLoading ? "40px" : "0px"}} role="log">
