@@ -988,6 +988,14 @@ In your response, write an KQL query based on the user input message.
         }
     ]
 
+    logging.debug(request_messages)
+
+    # for message in request_messages:
+    #     if message:
+    #         msg = {"role": message["role"], "content": message["content"]}
+    #         messages.append(msg)
+    #         logging.info(msg)
+
     last_message = request_messages[-1]
     if last_message:
         messages.append(
@@ -1041,6 +1049,7 @@ In your response, write an KQL query based on the user input message.
 
         for chunk in response:
             token = None
+
             if chunk["choices"]:
                 token = chunk["choices"][-1]["delta"].get("content")
             else:
@@ -1048,6 +1057,8 @@ In your response, write an KQL query based on the user input message.
 
             if token and token != "[DONE]":
                 words.append(token)
+                
+        logging.debug(words)
 
         sentence = "".join(words)
 
@@ -1060,7 +1071,9 @@ In your response, write an KQL query based on the user input message.
 
         # Execute Query if KQL
         if START_PHRASE in sentence:
+            logging.debug(f"Start phrase {START_PHRASE} present in query")
             kql_query = extract_content(START_PHRASE, END_PHRASE, sentence)
+            logging.debug(f"Extracted KQl query: {kql_query}")
 
             response_context["original_kql_query"] = kql_query
 
@@ -1072,7 +1085,7 @@ In your response, write an KQL query based on the user input message.
                 response_context["text_to_send_back"] = ""
                 if DEBUG_LOGGING:
                     logging.debug(
-                        f"KQL Query: [!CAUTION] {response_context['original_kql_query']}"
+                        f"KQL Query: {response_context['original_kql_query']}"
                     )
 
                 # Surround the table name with [''] if not already done by OpenAI!
@@ -1085,8 +1098,8 @@ In your response, write an KQL query based on the user input message.
 
                 response_context[
                     "text_to_send_back"
-                ] = f"{response_context['text_to_send_back']}### KQL Query:\n{response_context['kql_query_with_table']}\n"
-                logging.info(
+                ] = f"{response_context['text_to_send_back']}### KQL Query:\n```Kusto\n{response_context['kql_query_with_table']}\n```\n\n"
+                logging.debug(
                     f"KQL Query after formatting table name: {response_context['kql_query_with_table']}"
                 )
 
@@ -1117,10 +1130,13 @@ In your response, write an KQL query based on the user input message.
 
                     df_load_failed = False
                 except Exception as e:
+                    logging.error(f"Error executing KQL query. Error: {e}")
                     df_load_failed = True
                     response_context[
                         "text_to_send_back"
                     ] = f"{response_context['text_to_send_back']}\n### Error while loading dataframe:\nError: {e}"
+
+                plot_context = None
 
                 if not df_load_failed:
                     df = response_context["df"]
@@ -1241,7 +1257,8 @@ In your response, write an KQL query based on the user input message.
                         logging.info("Skipping plot generation!!!")
 
                 if (
-                    plot_context["plot"]
+                    plot_context
+                    and plot_context["plot"]
                     and not plot_generation_failed
                     and not image_save_failed
                 ):
