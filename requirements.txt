@@ -13,3 +13,4 @@ plotly
 matplotlib
 kaleido
 langchain
+numpy

@@ -9,6 +9,7 @@ import uuid
 import time
 import re
 import pandas as pd
+import numpy as np
 import plotly.express as px
 from plotly.graph_objects import Figure
 from pandas.api.types import is_numeric_dtype, is_string_dtype
@@ -846,6 +847,54 @@ def dataframe_from_result_table(
     return frame
 
 
+def prepare_df_context(df: pd.DataFrame):
+    shape = df.shape
+    num_rows = shape[0]
+    num_columns = shape[1]
+
+    df_context = {"num_rows": num_rows, "num_columns": num_columns}
+
+    columns = df.columns
+    df_context["columns"] = columns
+
+    column_types = df.dtypes.tolist()
+    df_context["column_dtypes"] = column_types
+
+    has_numerical_columns = False
+    has_categorical_columns = False
+    numerical_columns = []
+    categorical_columns = []
+
+    for dtype, column_name in zip(column_types, columns):
+        is_numerical = pd.api.types.is_numeric_dtype(dtype)
+        is_categorical = pd.api.types.is_string_dtype(dtype)
+
+        if is_numerical:
+            has_numerical_columns = True
+            numerical_columns.append(column_name)
+
+        if is_categorical:
+            has_categorical_columns = True
+            categorical_columns.append(column_name)
+
+        logging.info(
+            f"Column: {column_name}, Numerical: {is_numerical}, Categorical: {is_categorical}"
+        )
+
+    df_context["has_numerical_columns"] = has_numerical_columns
+    df_context["has_categorical_columns"] = has_categorical_columns
+    df_context["numerical_columns"] = (
+        numerical_columns if has_numerical_columns else None
+    )
+    df_context["categorical_columns"] = (
+        categorical_columns if has_categorical_columns else None
+    )
+
+    logging.info(f"DataFrame Context: {df_context}")
+
+    return df_context
+
+
 def generate_bar_plot(df: pd.DataFrame, x, y, barmode="stack") -> Figure:
     logging.info("generate_bar_plot...")
 
@@ -896,11 +945,10 @@ Behave like an Azure Data Explorer Kusto Query Language expert. Your task is to 
 
 Contextual Data:
 
-I have a dataset wherein i have a table named 'enriched-edr'. It has the below comma separated columns and the corresponding datatype for each column in the format column_name:datatype. Schema for the various tables is as below:
+I have a few datasets wherein I have multiple tables: 'enriched-edr'. They have the below comma separated columns and the corresponding datatype for each column in the format column_name:datatype. Schemas for the various tables are as below:
 
 Table #1: 'enriched-edr'
-
-Columns:
+Columns for Table #1:
 
 eventTimeFlow:datetime
 flowRecord_flowRecordType:string
@@ -1057,7 +1105,7 @@ In your response, write an KQL query based on the user input message.
 
             if token and token != "[DONE]":
                 words.append(token)
-                
+
         logging.debug(words)
 
         sentence = "".join(words)
@@ -1114,14 +1162,16 @@ In your response, write an KQL query based on the user input message.
                         )
 
                     # Convert KQL Response to a Pandas DataFrame
-                    response_context["df"] = dataframe_from_result_table(
+                    df = dataframe_from_result_table(
                         response_context["kql_response"].primary_results[0]
                     )
+                    response_context["df"] = df
+
+                    if df is not None and not df.empty:
+                        logging.info(f"DF as JSON: {df.to_json()}")
 
                     # Convert DataFrame as text
-                    response_context[
-                        "df_as_text"
-                    ] = f"```python\n{response_context['df'].to_string()}\n```"
+                    response_context["df_as_text"] = f"```python\n{df.to_string()}\n```"
                     logging.info(f"Dataframe as Text: {response_context['df_as_text']}")
 
                     response_context[
@@ -1141,64 +1191,86 @@ In your response, write an KQL query based on the user input message.
                 if not df_load_failed:
                     df = response_context["df"]
 
-                    shape = df.shape
-                    num_rows = shape[0]
-                    num_columns = shape[1]
-
-                    logging.info(
-                        f"Dataframe Shape: {shape}, Rows: {num_rows}, Columns: {num_columns}"
-                    )
-                    logging.info(
-                        f"Dataframe Columns: {df.columns}, Data Types: {df.dtypes.tolist()}"
-                    )
-
-                    """
-                    Index   # of Rows   # of Columns    Plot?   Plot Context
-                    1       1-5         1               Yes     Bar, if the column is Numerical
-                    2       N           1               No      Skip, if the column is Non-Numerical
-                    3       N           1               Yes     Bar, if the column is Numerical
-                    4       1           N               Yes     GroupedBar, if we have 1 text column and others are Numerical
-                    5       1           N               No      Skip, if all columns are Non-Numerical
-                    6       N           1               Yes     Histogram, if the column is Numerical
-                    7       N           N               Yes     
-                    """
                     plot_context = {
                         "plot": False,
                         "plot_type": None,
                         "x": None,
                         "y": None,
-                        "categories": None,
                     }
 
-                    print(df.columns[0])
+                    df_context = prepare_df_context(df)
+                    plot_context["df_context"] = df_context
+
+                    """
+                    # of Rows   # of Columns    Plot?   Plot Context
+                    1-10        1               Yes     Bar, if the column is Numerical
+                    >10         1               No      Skip, if column is Numerical as graph will be cluttered with lot of bars
+                    N           1               No      Skip, if the column is Non-Numerical
+                    1-10        1-5             Yes     GroupedBar, if we have 1 text column and others are Numerical
+                    >10         >6              Yes     Skip, if column is Numerical as graph will be cluttered with lot of bars
+                    1           N               No      Skip, if all columns are Non-Numerical
+                    N           1               Yes     Histogram, if the column is Numerical
+                    """
+                    MAX_ROWS_FOR_GRAPH = 10
+                    MAX_COLUMNS_FOR_GRAPH = 5
 
                     if (
-                        num_rows >= 1
-                        and num_rows <= 5
-                        and num_columns == 1
-                        and is_numeric_dtype(df[df.columns[0]])
+                        df_context["num_rows"] >= 1
+                        and df_context["num_rows"] <= MAX_ROWS_FOR_GRAPH
+                        and df_context["num_columns"] == 1
+                        and df_context["has_numerical_columns"]
                     ):
-                        # Bar
+                        logging.info("Condition #1: Bar")
+
                         plot_context["plot"] = True
                         plot_context["plot_type"] = "bar"
                         plot_context["x"] = None
-                        plot_context["y"] = df.columns[0]
-                    elif num_columns == 1 and not is_numeric_dtype(df[df.columns[0]]):
-                        # Skip
+                        plot_context["y"] = df_context["numerical_columns"][0]
+                    elif (
+                        df_context["num_rows"] > MAX_ROWS_FOR_GRAPH
+                        and df_context["num_columns"] == 1
+                        and df_context["has_numerical_columns"]
+                    ):
+                        logging.info("Condition #2: Skip")
+
                         plot_context["plot"] = False
                     elif (
-                        num_columns >= 2
+                        df_context["num_columns"] == 1
+                        and df_context["has_categorical_columns"]
+                    ):
+                        logging.info("Condition #3: Skip")
+
+                        plot_context["plot"] = False
+                    elif (
+                        df_context["num_rows"] >= 1
+                        and df_context["num_rows"] <= MAX_ROWS_FOR_GRAPH
+                        and df_context["num_columns"] >= 1
+                        and df_context["num_columns"] <= MAX_COLUMNS_FOR_GRAPH
+                        and df_context["has_categorical_columns"]
+                        and df_context["has_numerical_columns"]
+                    ):
+                        logging.info("Condition #4: Grouped Bar")
+
+                        plot_context["plot"] = True
+                        plot_context["plot_type"] = "grouped_bar"
+                        plot_context["x"] = df_context["categorical_columns"][0]
+                        plot_context["y"] = df_context["numerical_columns"]
+                    elif (
+                        df_context["num_columns"] >= 2
                         and not is_numeric_dtype(df[df.columns[0]])
                         and is_numeric_dtype(df[df.columns[1]])
                     ):
-                        # Bar
+                        logging.info("Condition #5: Grouped Bar")
+
                         plot_context["plot"] = True
                         plot_context["plot_type"] = "bar"
                         plot_context["x"] = df.columns[0]
                         plot_context["y"] = df.columns[1]
                     else:
-                        # Skip
+                        logging.info("Condition Default: Skip")
                         plot_context["plot"] = False
+
+                    logging.info(f"Plot Context: {plot_context}")
 
                     if plot_context["plot"]:
                         figure = None
@@ -1207,7 +1279,7 @@ In your response, write an KQL query based on the user input message.
 
                         try:
                             # Get the plot from DataFrame
-                            # response_context['plot'] = response_context['df'].plot()
+                            # response_context['plot'] = df.plot()
 
                             match plot_context["plot_type"]:
                                 case "bar":
